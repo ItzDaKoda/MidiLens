@@ -194,3 +194,24 @@ svg {
     grid-template-columns: 1fr;
   }
 }
+
+
+.playback-stack {
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.timeline-row,
+.zoom-row {
+  width: 100%;
+}
+
+.timeline-slider,
+.zoom-slider {
+  flex: 1;
+  min-width: 12rem;
+}
+
+.piano-roll-note {
+  margin-top: 0.85rem;
+}
