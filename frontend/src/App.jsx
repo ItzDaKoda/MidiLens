@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Activity, BarChart3, Clock, FileAudio, Gauge, Music2, Sparkles, UploadCloud, Waves } from "lucide-react";
 import PianoRoll from "./components/PianoRoll.jsx";
 
-const API_URL = "http://127.0.0.1:5000/api/analyze";
+const API_URL = "/api/analyze";
 
 function formatTime(seconds = 0) {
   const mins = Math.floor(seconds / 60);
