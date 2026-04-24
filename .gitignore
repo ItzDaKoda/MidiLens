@@ -1,11 +1,7 @@
-# Node
-frontend/node_modules
-frontend/dist
-
-# Python
-backend/.venv
+node_modules/
+dist/
+.venv/
 __pycache__/
 *.pyc
-
-# OS
+.env
 .DS_Store

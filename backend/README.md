@@ -1,14 +1,17 @@
 # MidiLens Backend
 
-Flask API for analyzing uploaded MIDI files.
+Flask API for parsing MIDI files and returning structured music analysis data.
 
-## Run locally
+## Run
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
 python app.py
 ```
 
-The API runs at `http://localhost:5000`.
+## Endpoints
+
+- `GET /api/health`
+- `POST /api/analyze`

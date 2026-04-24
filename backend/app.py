@@ -53,6 +53,29 @@ def instrument_name(program: int | None, is_drum: bool = False) -> str:
     return GM_INSTRUMENTS[program]
 
 
+def build_tempo_map(tempo_changes: list[dict[str, Any]], ticks_per_beat: int):
+    changes = sorted(tempo_changes, key=lambda item: item["tick"])
+    if not changes or changes[0]["tick"] != 0:
+        changes.insert(0, {"tick": 0, "tempo": 500000, "bpm": 120.0})
+
+    def ticks_to_seconds(target_tick: int) -> float:
+        seconds = 0.0
+        previous_tick = 0
+        current_tempo = changes[0]["tempo"]
+        for change in changes[1:]:
+            if change["tick"] >= target_tick:
+                break
+            delta_ticks = change["tick"] - previous_tick
+            seconds += (delta_ticks / ticks_per_beat) * (current_tempo / 1_000_000)
+            previous_tick = change["tick"]
+            current_tempo = change["tempo"]
+        delta_ticks = target_tick - previous_tick
+        seconds += (delta_ticks / ticks_per_beat) * (current_tempo / 1_000_000)
+        return seconds
+
+    return ticks_to_seconds, changes
+
+
 def extract_notes(mid: MidiFile) -> dict[str, Any]:
     merged = merge_tracks(mid.tracks)
     ticks_per_beat = mid.ticks_per_beat
@@ -60,12 +83,10 @@ def extract_notes(mid: MidiFile) -> dict[str, Any]:
     tempo_changes: list[dict[str, Any]] = []
     time_signatures: list[dict[str, Any]] = []
     current_program = defaultdict(lambda: 0)
-
     active_notes: dict[tuple[int, int], list[tuple[int, int, int]]] = defaultdict(list)
     notes: list[dict[str, Any]] = []
     track_summaries = []
 
-    # Per-track summary info
     for idx, track in enumerate(mid.tracks):
         name = getattr(track, "name", None) or f"Track {idx + 1}"
         programs = set()
@@ -97,10 +118,8 @@ def extract_notes(mid: MidiFile) -> dict[str, Any]:
     absolute_ticks = 0
     for msg in merged:
         absolute_ticks += msg.time
-
         if msg.type == "set_tempo":
-            bpm = round(tempo2bpm(msg.tempo), 2)
-            tempo_changes.append({"tick": absolute_ticks, "tempo": msg.tempo, "bpm": bpm})
+            tempo_changes.append({"tick": absolute_ticks, "tempo": msg.tempo, "bpm": round(tempo2bpm(msg.tempo), 2)})
         elif msg.type == "time_signature":
             time_signatures.append({
                 "tick": absolute_ticks,
@@ -113,12 +132,10 @@ def extract_notes(mid: MidiFile) -> dict[str, Any]:
         elif msg.type == "note_on" and msg.velocity > 0:
             active_notes[(msg.channel, msg.note)].append((absolute_ticks, msg.velocity, current_program[msg.channel]))
         elif msg.type in {"note_off", "note_on"}:
-            if msg.type == "note_on" and msg.velocity > 0:
-                continue
             key = (msg.channel, msg.note)
             if active_notes[key]:
                 start_tick, velocity, program = active_notes[key].pop(0)
-                duration_ticks = max(0, absolute_ticks - start_tick)
+                duration_ticks = max(1, absolute_ticks - start_tick)
                 notes.append({
                     "pitch": msg.note,
                     "pitchName": pitch_to_name(msg.note),
@@ -134,30 +151,26 @@ def extract_notes(mid: MidiFile) -> dict[str, Any]:
 
     tempo_changes = tempo_changes or [{"tick": 0, "tempo": 500000, "bpm": 120.0}]
     time_signatures = time_signatures or [{"tick": 0, "numerator": 4, "denominator": 4, "display": "4/4"}]
+    ticks_to_seconds, tempo_changes = build_tempo_map(tempo_changes, ticks_per_beat)
 
-    def ticks_to_seconds(target_tick: int) -> float:
-        seconds = 0.0
-        previous_tick = 0
-        current_tempo = tempo_changes[0]["tempo"]
-        for change in tempo_changes:
-            if change["tick"] >= target_tick:
-                break
-            delta_ticks = change["tick"] - previous_tick
-            seconds += (delta_ticks / ticks_per_beat) * (current_tempo / 1_000_000)
-            previous_tick = change["tick"]
-            current_tempo = change["tempo"]
-        delta_ticks = target_tick - previous_tick
-        seconds += (delta_ticks / ticks_per_beat) * (current_tempo / 1_000_000)
-        return seconds
+    for change in tempo_changes:
+        change["seconds"] = round(ticks_to_seconds(change["tick"]), 4)
+
+    for ts in time_signatures:
+        ts["seconds"] = round(ticks_to_seconds(ts["tick"]), 4)
 
     for note in notes:
         note["startSeconds"] = round(ticks_to_seconds(note["startTick"]), 4)
         note["endSeconds"] = round(ticks_to_seconds(note["endTick"]), 4)
-        note["durationSeconds"] = round(note["endSeconds"] - note["startSeconds"], 4)
+        note["durationSeconds"] = round(max(0.01, note["endSeconds"] - note["startSeconds"]), 4)
+
+    notes.sort(key=lambda n: (n["startSeconds"], n["pitch"]))
+    melodic_notes = [note for note in notes if not note["isDrum"]]
 
     if notes:
-        min_pitch = min(note["pitch"] for note in notes if not note["isDrum"])
-        max_pitch = max(note["pitch"] for note in notes if not note["isDrum"])
+        pitch_source = melodic_notes or notes
+        min_pitch = min(note["pitch"] for note in pitch_source)
+        max_pitch = max(note["pitch"] for note in pitch_source)
         duration_seconds = max(note["endSeconds"] for note in notes)
         total_notes = len(notes)
         density = round(total_notes / duration_seconds, 2) if duration_seconds > 0 else total_notes
@@ -171,7 +184,6 @@ def extract_notes(mid: MidiFile) -> dict[str, Any]:
         average_velocity = 0.0
         instrument_counts = Counter()
 
-    # Note-density windows for difficult passages
     difficult_passages = []
     if duration_seconds > 0 and total_notes > 0:
         window_size = 4.0
@@ -182,20 +194,23 @@ def extract_notes(mid: MidiFile) -> dict[str, Any]:
             buckets[idx] += 1
         ranked = sorted(enumerate(buckets), key=lambda item: item[1], reverse=True)[:3]
         difficult_passages = [
-            {
-                "start": round(i * window_size, 2),
-                "end": round(min(duration_seconds, (i + 1) * window_size), 2),
-                "notes": count,
-            }
+            {"start": round(i * window_size, 2), "end": round(min(duration_seconds, (i + 1) * window_size), 2), "notes": count}
             for i, count in ranked if count > 0
         ]
 
+    beat_grid = []
+    if duration_seconds > 0:
+        first_tempo = tempo_changes[0]["tempo"]
+        seconds_per_beat = first_tempo / 1_000_000
+        max_beats = min(800, math.ceil(duration_seconds / seconds_per_beat) + 1)
+        numerator = time_signatures[0].get("numerator", 4)
+        for beat in range(max_beats):
+            second = round(beat * seconds_per_beat, 4)
+            if second <= duration_seconds:
+                beat_grid.append({"seconds": second, "beat": beat + 1, "isMeasure": beat % numerator == 0})
+
     return {
-        "meta": {
-            "format": mid.type,
-            "ticksPerBeat": ticks_per_beat,
-            "trackCount": len(mid.tracks),
-        },
+        "meta": {"format": mid.type, "ticksPerBeat": ticks_per_beat, "trackCount": len(mid.tracks)},
         "summary": {
             "tempoBpm": tempo_changes[0]["bpm"],
             "tempoChanges": tempo_changes,
@@ -214,13 +229,14 @@ def extract_notes(mid: MidiFile) -> dict[str, Any]:
         "tracks": track_summaries,
         "instruments": [{"name": name, "count": count} for name, count in instrument_counts.most_common()],
         "difficultPassages": difficult_passages,
+        "beatGrid": beat_grid,
         "notes": notes,
     }
 
 
 @app.get("/api/health")
 def health() -> Any:
-    return jsonify({"status": "ok"})
+    return jsonify({"status": "ok", "service": "MidiLens API"})
 
 
 @app.post("/api/analyze")

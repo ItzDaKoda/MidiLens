@@ -1,68 +1,70 @@
 # MidiLens
 
-MidiLens is a full-stack capstone project prototype for analyzing MIDI files and presenting the results in a musician-friendly web interface.
+MidiLens is a full-stack MIDI file analyzer and play-along web application. It lets users upload `.mid` or `.midi` files, analyzes the musical data on a Flask backend, and displays the results in a professional React dashboard with synchronized piano-roll playback.
 
 ## Features
-- Upload `.mid` and `.midi` files
-- Parse MIDI note, tempo, time signature, and instrument data
-- Display summary metrics such as tempo, duration, note range, and note density
-- Show a piano-roll style visualization with play/pause/stop controls
-- Highlight dense practice sections to help musicians target difficult passages
-- Present a track-by-track breakdown of the MIDI file
+
+- MIDI upload and backend parsing
+- Tempo, time signature, note range, note density, duration, and average velocity analysis
+- Instrument and track breakdowns
+- Difficult passage detection based on note density
+- Interactive piano-roll visualization
+- Web Audio playback with a rolling note scheduler
+- Play, pause, stop, reset, volume, zoom, and timeline controls
+- Beat and measure grid visualization
 
 ## Project Structure
 
 ```text
 MidiLens/
-├── backend/
-│   ├── app.py
-│   ├── requirements.txt
-│   └── README.md
-├── frontend/
-│   ├── package.json
-│   ├── vite.config.js
-│   ├── index.html
-│   └── src/
-│       ├── App.jsx
-│       ├── main.jsx
-│       ├── components/
-│       └── styles/
-├── .gitignore
-└── README.md
+  backend/
+    app.py
+    requirements.txt
+  frontend/
+    src/
+      App.jsx
+      components/
+        PianoRoll.jsx
+      styles/
+        index.css
 ```
 
-## How to Run the Project
+## Run the Backend
 
-### 1. Start the backend
 ```bash
 cd backend
 python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python app.py
-```
-
-Windows PowerShell:
-```powershell
-cd backend
-python -m venv .venv
 .venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 python app.py
 ```
 
-### 2. Start the frontend
+The backend runs on:
+
+```text
+http://127.0.0.1:5000
+```
+
+## Run the Frontend
+
+Open a second terminal:
+
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-Open the frontend URL shown by Vite, usually `http://localhost:5173`.
+The frontend usually runs on:
 
-## Suggested Next Improvements
-- Add real MIDI audio playback using a browser synth library such as Tone.js
-- Add zooming and scrubbing for the piano roll
-- Add measure markers and key signature detection
-- Save analysis history to a database
-- Deploy with Render, Railway, or Vercel + Render
+```text
+http://localhost:5173
+```
+
+## GitHub Update Commands
+
+```bash
+git add .
+git commit -m "Upgrade MidiLens interface and playback system"
+git push
+```
